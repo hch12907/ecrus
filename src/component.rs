@@ -2,26 +2,20 @@ use std::any::{ Any, TypeId };
 
 pub type ComponentId = TypeId;
 
-pub trait Component : Any + AsAny { 
+/// A cold component. Use this for components that are not frequently accessed.
+pub trait Component : Any + Send {
+    /// Obtains the `ComponentId` of the component.
+    /// Note: *It is highly discouraged for one to override this function.*
     fn component_id(&self) -> ComponentId {
         TypeId::of::<Self>()
     }
 }
 
-pub trait HotComponent : Component {
+/// A hot component. Use this for components that are frequently accessed.
+pub trait HotComponent : Any + Send { 
+    /// Obtains the `ComponentId` of the component.
+    /// Note: *It is highly discouraged for one to override this function.*
     fn component_id(&self) -> ComponentId {
         TypeId::of::<Self>()
-    }
-}
-
-pub trait AsAny {
-    fn as_any(&self) -> &Any;
-}
-
-impl<T: Component> AsAny for T {
-    // Rust, as of now, does not support type upcasting i.e. casting derived-
-    // trait objects into base-trait objects. This is a workaround.
-    fn as_any(&self) -> &Any {
-        self
     }
 }

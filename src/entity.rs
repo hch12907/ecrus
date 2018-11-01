@@ -1,85 +1,98 @@
 use std::any::{ Any, TypeId };
-use std::collections::HashSet;
-use std::fmt::{ Display, Result as FormatResult, Formatter };
+use std::collections::BTreeMap;
 
-use ComponentId;
-use { Component, HotComponent };
+use crate::{ Component, ComponentId, EcrusError, HotComponent };
 
-#[derive(Clone, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct EntityId(pub(crate) usize);
-
-impl Display for EntityId {
-    fn fmt(&self, fmt: &mut Formatter) -> FormatResult {
-        write!(fmt, "{}", self.0)
-    }
-}
+pub type EntityId = u32;
 
 pub struct Entity {
     id: EntityId,
-    components: HashSet<ComponentId>,
-    hot_components: HashSet<ComponentId>,
+    cold_component: BTreeMap<ComponentId, Box<Any>>,
+    hot_component: Vec<(ComponentId, Box<Any>)>,
 }
 
 impl Entity {
-    pub(crate) fn new(id: usize) -> Self {
+    pub(crate) fn new(id: EntityId) -> Self {
         Self {
-            id: EntityId(id),
-            components: HashSet::new(),
-            hot_components: HashSet::new(),
+            id,
+            cold_component: BTreeMap::new(),
+            hot_component: Vec::new(),
         }
     }
 
-    pub fn components(&self) -> Box<[&TypeId]> {
-        let keys = self.components.iter();
-        keys.collect::<Vec<_>>().into_boxed_slice()
+    pub fn entity_id(&self) -> EntityId {
+        self.id
     }
 
-    pub(crate) fn components_mut(&mut self) -> &mut HashSet<TypeId> {
-        &mut self.components
+    pub(crate) fn add_component(&mut self, data: Box<dyn Component>) -> Result<(), EcrusError>
+    {
+        let type_id = Component::component_id(data.as_ref());
+        if !self.cold_component.contains_key(&type_id) {
+            self.cold_component.insert(type_id, Box::new(data));
+            Ok(())
+        } else {
+            Err(EcrusError::ComponentAlreadyRegistered { 
+                comp_id: type_id,
+                entity_id: self.id,
+            })?
+        }
     }
 
-    pub fn hot_components(&self) -> Box<[&TypeId]> {
-        let keys = self.hot_components.iter();
-        keys.collect::<Vec<_>>().into_boxed_slice()
+    pub(crate) fn add_hot_component(&mut self, data: Box<dyn HotComponent>) -> Result<(), EcrusError>
+    {
+        let type_id = HotComponent::component_id(data.as_ref());
+
+        for (id, comp) in self.hot_component.iter_mut() {
+            if *id == type_id {
+                Err(EcrusError::ComponentAlreadyRegistered { 
+                    comp_id: type_id,
+                    entity_id: self.id,
+                })?
+            }
+        }
+
+        self.hot_component.push((type_id, Box::new(data)));
+        
+        Ok(())
     }
 
-    pub(crate) fn hot_components_mut(&mut self) -> &mut HashSet<TypeId> {
-        &mut self.hot_components
-    }
-
-    pub fn contains_component<T>(&self) -> bool 
+    pub fn get_component<T>(&self) -> Option<&T>
         where T: Component
     {
-        self.components.contains(&TypeId::of::<T>())
+        self.cold_component
+            .get(&TypeId::of::<T>())
+            .map(|x| Any::downcast_ref::<T>(x.as_ref()).unwrap())
     }
 
-    pub fn contains_hot_component<T>(&self) -> bool 
+    pub fn get_component_mut<T>(&mut self) -> Option<&mut T>
+        where T: Component
+    {
+        self.cold_component
+            .get_mut(&TypeId::of::<T>())
+            .map(|x| Any::downcast_mut::<T>(x.as_mut()).unwrap())
+    }
+
+    pub fn get_hot_component<T>(&self) -> Option<&T>
         where T: HotComponent
     {
-        self.components.contains(&TypeId::of::<T>())
+        let type_id = TypeId::of::<T>();
+
+        self.hot_component
+            .iter()
+            .filter(|(id, _)| id != &type_id)
+            .next()
+            .map(|(_, com)| Any::downcast_ref(com.as_ref()).unwrap())
     }
 
-    pub fn entity_id(&self) -> usize {
-        self.id.0
-    }
-}
+    pub fn get_hot_component_mut<T>(&mut self) -> Option<&mut T>
+        where T: HotComponent
+    {
+        let type_id = TypeId::of::<T>();
 
-impl PartialEq for Entity {
-    fn eq(&self, other: &Entity) -> bool {
-        self.id == other.id
-    }
-}
-
-impl PartialOrd for Entity {
-    fn partial_cmp(&self, other: &Entity) -> Option<::std::cmp::Ordering> {
-        (self.id).partial_cmp(&other.id)
-    }
-}
-
-impl Eq for Entity {}
-
-impl Ord for Entity {
-    fn cmp(&self, other: &Entity) -> ::std::cmp::Ordering {
-        (self.id).cmp(&other.id)
+        self.hot_component
+            .iter_mut()
+            .filter(|(id, _)| id != &type_id)
+            .next()
+            .map(|(_, com)| Any::downcast_mut(com.as_mut()).unwrap())
     }
 }

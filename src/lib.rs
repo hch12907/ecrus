@@ -1,22 +1,19 @@
 mod component;
 mod entity;
-mod error;
+mod errors;
 mod system;
 mod world;
 
-// Enums
-pub use error::EcsError;
+// Reexport traits
+pub use self::component::Component as Component;
+pub use self::component::HotComponent as HotComponent;
 
-// Structs
-pub use entity::Entity as Entity;
-pub use system::System as System;
-pub use world::World as World;
+// Reexport structs
+pub use self::errors::EcrusError as EcrusError;
+pub use self::entity::Entity as Entity;
+pub use self::system::System as System;
+pub use self::world::World as World;
 
-// Traits
-pub use component::AsAny as AsAny;
-pub use component::Component as Component;
-pub use component::HotComponent as HotComponent;
-
-// Typedefs
-pub use component::ComponentId as ComponentId;
-pub use entity::EntityId as EntityId;
+// Reexport typedefs
+pub use self::component::ComponentId as ComponentId;
+pub use self::entity::EntityId as EntityId;
