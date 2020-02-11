@@ -2,20 +2,22 @@ use std::any::{ Any, TypeId };
 
 pub type ComponentId = TypeId;
 
-/// A cold component. Use this for components that are not frequently accessed.
-pub trait Component : Any + Send {
-    /// Obtains the `ComponentId` of the component.
-    /// Note: *It is highly discouraged for one to override this function.*
-    fn component_id(&self) -> ComponentId {
-        TypeId::of::<Self>()
-    }
+pub trait Component: Any + ComponentIntoAny + 'static {}
+
+pub trait ComponentIntoAny {
+    fn as_any(&self) -> &dyn Any;
+    
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-/// A hot component. Use this for components that are frequently accessed.
-pub trait HotComponent : Any + Send { 
-    /// Obtains the `ComponentId` of the component.
-    /// Note: *It is highly discouraged for one to override this function.*
-    fn component_id(&self) -> ComponentId {
-        TypeId::of::<Self>()
-    }
+impl<C: Component> ComponentIntoAny for C {
+    fn as_any(&self) -> &dyn Any { self }
+    
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+pub const fn component_id<C>() -> ComponentId 
+    where C: Component
+{
+    TypeId::of::<C>()
 }
