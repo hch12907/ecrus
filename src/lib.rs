@@ -1,6 +1,7 @@
 #![feature(const_fn)]
 #![feature(const_type_id)]
 
+mod bitset;
 mod component;
 mod entity;
 mod errors;
@@ -50,39 +51,14 @@ mod tests {
             &COMPS
         }
 
-        fn run(comps: &mut [(ComponentId, Vec<&mut dyn Component>)]) {
-            // Sigh, borrowck, we are taking one of the unique
-            // elements only!
-            let comps2 = unsafe { 
-                let len = comps.len();
-                let ptr = comps.as_mut_ptr();
-                std::slice::from_raw_parts_mut(ptr, len)
-            };
+        fn run(mut comps: ComponentSet) {
+            let mut positions = comps.get_components::<Position>();
+            let mut velocities = comps.get_components::<Velocity>();
+            let mut accelerations = comps.get_components::<Acceleration>();
 
-            let comps3 = unsafe { 
-                let len = comps.len();
-                let ptr = comps.as_mut_ptr();
-                std::slice::from_raw_parts_mut(ptr, len)
-            };
-
-            let positions = comps.iter_mut()
-                .filter(|(cid, _v)| *cid == component_id::<Position>())
-                .nth(0)
-                .unwrap();
-
-            let velocities = comps2.iter_mut()
-                .filter(|(cid, _v)| *cid == component_id::<Velocity>())
-                .nth(0)
-                .unwrap();
-
-            let accelerations = comps3.iter_mut()
-                .filter(|(cid, _v)| *cid == component_id::<Acceleration>())
-                .nth(0)
-                .unwrap();
-
-            let pva_iter = positions.1.iter_mut()
-                .zip(velocities.1.iter_mut())
-                .zip(accelerations.1.iter_mut());
+            let pva_iter = positions.iter_mut()
+                .zip(velocities.iter_mut())
+                .zip(accelerations.iter_mut());
             
             for ((pos, vel), acl) in pva_iter {
                 let pos = pos.as_any_mut().downcast_mut::<Position>().unwrap();

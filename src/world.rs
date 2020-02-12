@@ -85,8 +85,8 @@ impl World {
         for n in needed {
             if let Some(c) = self.components.get_mut(&n) {
                 if c.len() != 0 {
-                    // UNSAFE: We are sure that each Entity holds at most one
-                    // Component of the same type, and the &mut is unique
+                    // UNSAFE: As we had made sure earlier, the components we
+                    // get are unique and can be mutated independently
                     let c = c as *mut Vec<(Entity, Box<dyn Component>)>;
                     let c = unsafe { &mut *c };
                     initial_matches.push((n.clone(), c));
@@ -99,6 +99,8 @@ impl World {
         initial_matches.sort_by(|a, b| a.1.len().cmp(&b.1.len()));
 
         // Find the intersection of all entites w/ needed components
+        // Stores (TypeId, Vec<&mut Component>), intersection[i][n] refers
+        // to the i-th component of n-th entity
         let mut intersection = Vec::new();
 
         for im in &initial_matches {
@@ -113,18 +115,18 @@ impl World {
                     continue 'outer;
                 }
             }
-
-            intersection[0].1.push(comp.as_mut());
+            
+            intersection[0].1.push(comp.as_mut() as *mut _);
             
             for (i, im) in initial_matches_s.iter_mut().enumerate() {
                 // UNSAFE: the inside of initial_matches_s is not modified,
                 // despite the iter_mut().
                 let ent = (im.1)[idx].1.as_mut() as *mut _;
-                let ent = unsafe { &mut *ent };
                 intersection[i + 1].1.push(ent)
             }
         }
 
-        S::run(intersection.as_mut())
+        let comp_set = ComponentSet::new(intersection.as_mut());
+        S::run(comp_set)
     }
 }
