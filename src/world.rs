@@ -1,5 +1,5 @@
 use std::any::{ Any, TypeId };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::component::*;
 use crate::entity::*;
@@ -7,14 +7,18 @@ use crate::system::*;
 
 pub struct World {
     current_id: usize,
-    components: HashMap<ComponentId, Vec<(Entity, Box<dyn Component>)>>,
+    components: BTreeMap<ComponentId, Vec<(Entity, Box<dyn Component>)>>,
+    systems: BTreeMap<SystemId, &'static [ComponentId]>,
+    cached_intersection: BTreeMap<SystemId, Vec<(ComponentId, Vec<*mut dyn Component>)>>,
 }
 
 impl World {
     pub fn new() -> Self {
         World {
             current_id: 0,
-            components: HashMap::new(),
+            components: BTreeMap::new(),
+            systems: BTreeMap::new(),
+            cached_intersection: BTreeMap::new(),
         }
     }
 
@@ -27,6 +31,13 @@ impl World {
     pub fn add_component<C>(&mut self, ent: &Entity, comp: C) 
         where C: Component 
     {
+        // Invalidate the cache if the component structure is modified
+        for (sys, comps) in self.systems.iter() {
+            if comps.contains(&component_id::<C>()) {
+                self.cached_intersection.remove(sys);
+            }
+        }
+
         self.components.entry(component_id::<C>())
             .or_insert_with(|| Vec::new())
             .push((ent.clone(), Box::new(comp)));
@@ -58,8 +69,8 @@ impl World {
         None
     }
 
-    pub fn run_with<S>(&mut self)
-        where S: System 
+    fn find_intersection<S>(&mut self) -> Vec<(ComponentId, Vec<*mut dyn Component>)>
+        where S: System
     {
         let needed = S::needed_components();
 
@@ -78,7 +89,7 @@ impl World {
             }
         }
 
-        if needed.len() == 0 { return; }
+        if needed.len() == 0 { return Vec::new() }
 
         // Get initial matches
         let mut initial_matches = Vec::new();
@@ -95,7 +106,7 @@ impl World {
         };
 
         // Skip if we can't find matching entities
-        if needed.len() != initial_matches.len() { return; }
+        if needed.len() != initial_matches.len() { return Vec::new() }
         initial_matches.sort_by(|a, b| a.1.len().cmp(&b.1.len()));
 
         // Find the intersection of all entites w/ needed components
@@ -124,9 +135,27 @@ impl World {
                 let ent = (im.1)[idx].1.as_mut() as *mut _;
                 intersection[i + 1].1.push(ent)
             }
-        }
+        };
 
-        let comp_set = ComponentSet::new(intersection.as_mut());
+        intersection
+    }
+
+    pub fn run_with<S>(&mut self)
+        where S: System 
+    {
+        self.systems.entry(S::id())
+            .or_insert(S::needed_components());
+
+        let ci = if let Some(ci) = self.cached_intersection.get(&S::id()) {
+            ci
+        } else {
+            let intersection = self.find_intersection::<S>();
+            // No intersections, skip
+            if intersection.is_empty() { return }
+            self.cached_intersection.entry(S::id()).or_insert(intersection)
+        };
+
+        let comp_set = ComponentSet::new(ci);
         S::run(comp_set)
     }
 }
